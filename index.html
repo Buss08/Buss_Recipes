@@ -239,7 +239,7 @@ body.locked .app{display:none}
     <button class="btn primary" type="submit">Open</button>
   </form>
 </div>
-<script>window.RB_CONFIG={"keeper": "the book keeper", "suggestUrl": "https://docs.google.com/forms/d/e/1FAIpQLSdSJmMPC76VtspPjlHIj8nH3Ei5EjV5e3EUEJp3Zw2WR39SOQ/formResponse", "suggestField": "entry.132958907"};</script>
+<script>window.RB_CONFIG={"keeper": "Andrew", "suggestUrl": "https://docs.google.com/forms/d/e/1FAIpQLSdSJmMPC76VtspPjlHIj8nH3Ei5EjV5e3EUEJp3Zw2WR39SOQ/formResponse", "suggestField": "entry.132958907", "nameField": "entry.2034340737"};</script>
 
 <div class="app">
   <header class="top">
@@ -256,6 +256,7 @@ body.locked .app{display:none}
       <div class="adder">
         <form id="urlForm" autocomplete="off">
           <input type="text" id="urlInput" inputmode="url" placeholder="Paste a recipe link to suggest it" aria-label="Recipe link">
+          <input type="text" id="nameInput" placeholder="Your name" aria-label="Your name" maxlength="40" autocomplete="given-name" style="flex:0 1 150px">
           <button class="btn primary" type="submit">Suggest this recipe</button>
           <button class="btn" type="button" data-action="new">Write one yourself</button>
         </form>
@@ -266,6 +267,7 @@ body.locked .app{display:none}
         <input type="text" id="search" placeholder="Search recipes or ingredients" aria-label="Search recipes">
         <select id="sort" aria-label="Sort recipes"><option value="new">Newest first</option><option value="az">A to Z</option><option value="rating">Highest rated</option><option value="quick">Quickest first</option></select>
         <select id="timeFilter" aria-label="Filter by cooking time"><option value="any">Any time</option><option value="30">30 min or less</option><option value="60">1 hour or less</option><option value="long">Longer than 1 hour</option></select>
+        <select id="byFilter" aria-label="Filter by who added it" hidden><option value="all">Everyone's recipes</option></select>
         <button type="button" class="cat" id="favBtn" data-action="fav-filter" aria-pressed="false">★ Favorites</button>
       </div>
       <div class="backup"><button class="btn sm" type="button" data-action="backup">Back up my data</button><button class="btn sm" type="button" data-action="restore">Restore a backup</button><input type="file" id="restoreFile" accept="application/json,.json" hidden>
@@ -593,7 +595,7 @@ function renderCats(){
 }
 function cardHTML(r){
   var pending=r.status==='pending';
-  var meta=[catOf(r),r.rating?'★ '+r.rating:'',r.servings?'Serves '+r.servings:'',r.time||'',r.url?host(r.url):''].filter(Boolean).join(' · ');
+  var meta=[catOf(r),r.rating?'★ '+r.rating:'',r.servings?'Serves '+r.servings:'',r.time||'',r.addedBy?'Added by '+r.addedBy:'',r.url?host(r.url):''].filter(Boolean).join(' · ');
   var chips=(pending?'<span class="chip warm">Waiting for Claude</span>':'')+(r.example?'<span class="chip">Example</span>':'');
   var id=esc(r.id);
   return '<article class="card"><button class="card-main" data-action="open" data-id="'+id+'"><span class="card-title">'+esc(r.title)+'</span>'+
@@ -603,7 +605,7 @@ function cardHTML(r){
     '<button class="btn sm ghost fav-btn" data-action="fav" data-id="'+id+'" aria-pressed="'+!!r.fav+'" aria-label="Favorite" title="Favorite">'+(r.fav?'★':'☆')+'</button></div></article>';
 }
 function renderRecipes(){
-  renderCats();
+  renderCats();renderBy();
   var fb=$('#favBtn'),fc=Object.values(recipes).filter(function(r){return r.fav}).length;
   fb.setAttribute('aria-pressed',String(view.fav));fb.innerHTML='★ Favorites<span class="n">'+fc+'</span>';
   var g=$('#recipeGrid'),all=Object.values(recipes);
@@ -614,6 +616,7 @@ function renderRecipes(){
   var q=view.search.trim().toLowerCase();
   var rs=all.filter(function(r){
     if(view.fav&&!r.fav)return false;
+    if(siteBy!=='all'){var rb=normBy(r.addedBy);if(siteBy==='__mine'?rb!==normBy(myName()):rb!==siteBy)return false}
     if(view.cat==='none'){if(catOf(r))return false}else if(view.cat!=='all'&&catOf(r)!==view.cat)return false;
     if(view.time!=='any'){
       var tm=timeMins(r);
@@ -831,17 +834,29 @@ function sorter(a,b){
   if(view.sort==='quick'){var x=timeMins(a),y=timeMins(b);if(x==null&&y==null)return t(a,b);if(x==null)return 1;if(y==null)return -1;return x-y||t(a,b)}
   return (b.addedAt||0)-(a.addedAt||0);
 }
+var siteBy='all';
+function myName(){try{return (localStorage.getItem('rb:name')||'').trim()}catch(e){return ''}}
+function normBy(n){return String(n||'').trim().toLowerCase()}
+function renderBy(){
+  var sel=$('#byFilter');if(!sel)return;
+  var names={};Object.values(recipes).forEach(function(r){var k=normBy(r.addedBy);if(k&&!names[k])names[k]=String(r.addedBy).trim()});
+  var keys=Object.keys(names).sort();
+  if(siteBy!=='all'&&siteBy!=='__mine'&&keys.indexOf(siteBy)<0)siteBy='all';
+  sel.hidden=keys.length<1;
+  sel.innerHTML='<option value="all">Everyone\'s recipes</option>'+(myName()?'<option value="__mine">Mine ('+esc(myName())+')</option>':'')+keys.map(function(k){return '<option value="'+esc(k)+'">Added by '+esc(names[k])+'</option>'}).join('');
+  sel.value=siteBy;
+}
 function suggest(urls){
   if(!urls.length)return;
   var C=window.RB_CONFIG||{},who=C.keeper||'the book keeper';
   if(C.suggestUrl&&C.suggestField){
     Promise.all(urls.map(function(u){
-      var fd=new URLSearchParams();fd.append(C.suggestField,u);
+      var fd=new URLSearchParams();fd.append(C.suggestField,u);if(C.nameField)fd.append(C.nameField,myName());
       return fetch(C.suggestUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()});
     })).then(function(){toast(urls.length===1?'Thanks! Sent to '+who+'.':'Thanks! '+urls.length+' links sent to '+who+'.')},
       function(){toast("Couldn't send that. Check your connection and try again.")});
   }else{
-    var txt=urls.join('\n');
+    var txt=urls.join('\n')+' (from '+myName()+')';
     var done=function(){toast('Link copied. Send it to '+who+' so they can add it.')};
     if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(txt).then(done,function(){toast('Send this link to '+who+': '+txt)});
     else toast('Send this link to '+who+': '+txt);
@@ -986,6 +1001,7 @@ document.addEventListener('change',function(e){
     };
     rd.readAsText(file);return;
   }
+  if(t.id==='byFilter'){siteBy=t.value;renderRecipes();return}
   if(t.id==='sort'){view.sort=t.value;renderRecipes();return}
   if(t.id==='timeFilter'){view.time=t.value;renderRecipes();return}
   if(t.id==='autoImport'){prefs.autoImport=t.checked;savePrefs();if(t.checked)scheduleAutoImport();return}
@@ -1013,6 +1029,7 @@ document.addEventListener('submit',function(e){
   if(id==='urlForm'){
     var input=$('#urlInput'),urls=(input.value.match(/https?:\/\/[^\s,]+/g)||[]).map(cleanUrl).filter(Boolean);
     if(!urls.length){toast('Paste a link that starts with http');return}
+    if(!myName()){toast('Add your name first so they know who it is from');var ni=$('#nameInput');if(ni)ni.focus();return}
     var known=urls.map(function(u){return Object.values(recipes).filter(function(r){return r.url===u})[0]}).filter(Boolean);
     if(known.length&&known.length===urls.length){input.value='';toast('That recipe is already in the book');openRecipe(known[0].id);return}
     input.value='';suggest(urls.filter(function(u){return !known.some(function(r){return r.url===u})}));
@@ -1044,7 +1061,7 @@ function saveFromForm(){
   var r=Object.assign({},old||{},{
     id:old?old.id:db.collection('recipes').doc().id,
     title:title,url:cleanUrl($('#ef-url').value),servings:sv>0?sv:null,time:$('#ef-time').value.trim(),category:$('#ef-cat').value,
-    ingredients:ings,steps:steps,status:'ready',addedAt:old&&old.addedAt?old.addedAt:Date.now()
+    ingredients:ings,steps:steps,status:'ready',addedBy:old&&old.addedBy?old.addedBy:myName(),addedAt:old&&old.addedAt?old.addedAt:Date.now()
   });
   saveRecipe(r);
   drawer={id:r.id,mult:1,mode:'view'};
@@ -1182,6 +1199,11 @@ renderAll();
     toast("Couldn't load the shared recipes. Open the site from its web address and check your connection.");
   }
   db=makeLocalDb(shared);
+  var ni=$('#nameInput');
+  if(ni){
+    ni.value=myName();
+    ni.addEventListener('input',function(){try{localStorage.setItem('rb:name',ni.value.trim())}catch(e){}renderBy()});
+  }
   db.collection('recipes').onSnapshot(function(snap){
     var next={};snap.docs.forEach(function(d){var v=d.data();next[d.id]=Object.assign({},v,{id:d.id})});
     recipes=next;loaded.recipes=true;renderAll();
