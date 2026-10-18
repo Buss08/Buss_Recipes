@@ -239,7 +239,7 @@ body.locked .app{display:none}
     <button class="btn primary" type="submit">Open</button>
   </form>
 </div>
-<script>window.RB_CONFIG={"keeper": "the book keeper", "suggestUrl": "", "suggestField": ""};</script>
+<script>window.RB_CONFIG={"keeper": "the book keeper", "suggestUrl": "https://docs.google.com/forms/d/e/1FAIpQLSdSJmMPC76VtspPjlHIj8nH3Ei5EjV5e3EUEJp3Zw2WR39SOQ/formResponse", "suggestField": "entry.132958907"};</script>
 
 <div class="app">
   <header class="top">
@@ -836,8 +836,8 @@ function suggest(urls){
   var C=window.RB_CONFIG||{},who=C.keeper||'the book keeper';
   if(C.suggestUrl&&C.suggestField){
     Promise.all(urls.map(function(u){
-      var fd=new FormData();fd.append(C.suggestField,u);
-      return fetch(C.suggestUrl,{method:'POST',mode:'no-cors',body:fd});
+      var fd=new URLSearchParams();fd.append(C.suggestField,u);
+      return fetch(C.suggestUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fd.toString()});
     })).then(function(){toast(urls.length===1?'Thanks! Sent to '+who+'.':'Thanks! '+urls.length+' links sent to '+who+'.')},
       function(){toast("Couldn't send that. Check your connection and try again.")});
   }else{
